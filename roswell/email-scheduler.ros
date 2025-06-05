@@ -1,0 +1,123 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#|
+exec ros -Q -- $0 "$@"
+|#
+
+;;; email-scheduler.ros - Roswell script for email scheduler
+;;; Usage: ./roswell/email-scheduler.ros [command] [options]
+
+(progn
+  ;; Ensure we can find the system
+  (pushnew (truename ".") ql:*local-project-directories*)
+  (ql:register-local-projects)
+  (ql:quickload :email-scheduler :silent t))
+
+(defpackage :email-scheduler.script
+  (:use :cl :email-scheduler)
+  (:export #:main))
+
+(in-package :email-scheduler.script)
+
+(defun show-usage ()
+  "Show usage information"
+  (format t "~&Email Scheduler - Common Lisp Implementation~%~%")
+  (format t "Usage: ros email-scheduler.ros [command] [options]~%~%")
+  (format t "Commands:~%")
+  (format t "  test         Run all tests~%")
+  (format t "  demo         Run interactive demo~%")
+  (format t "  repl         Start interactive REPL~%")
+  (format t "  validate     Validate installation~%")
+  (format t "  schedule     Run scheduler with test data~%")
+  (format t "  benchmark    Run performance benchmarks~%")
+  (format t "  help         Show this help message~%~%")
+  (format t "Examples:~%")
+  (format t "  ros email-scheduler.ros test~%")
+  (format t "  ros email-scheduler.ros demo~%")
+  (format t "  ros email-scheduler.ros schedule --contacts 1000~%"))
+
+(defun run-tests ()
+  "Load and run all tests"
+  (load "run-tests.lisp")
+  (funcall (find-symbol "RUN-ALL-TESTS" :cl-user)))
+
+(defun run-demo ()
+  "Run the interactive demo"
+  (load "run-tests.lisp")
+  (funcall (find-symbol "DEMO-SCHEDULER" :cl-user)))
+
+(defun start-repl ()
+  "Start interactive REPL"
+  (email-scheduler.repl:start-repl))
+
+(defun validate-installation ()
+  "Validate the installation"
+  (load "run-tests.lisp")
+  (funcall (find-symbol "VALIDATE-INSTALLATION" :cl-user)))
+
+(defun run-scheduler (&key (contacts 100) (db-path "demo-scheduler.db"))
+  "Run scheduler with test data"
+  (format t "Setting up test environment with ~A contacts...~%" contacts)
+  (email-scheduler:setup-test-environment 
+   :db-path db-path 
+   :contact-count contacts)
+  
+  (format t "Running scheduler...~%")
+  (multiple-value-bind (run-id stats)
+      (email-scheduler:run-scheduler :db-path db-path)
+    (format t "Scheduler completed with run ID: ~A~%" run-id)
+    (format t "Statistics: ~S~%" stats)))
+
+(defun run-benchmark ()
+  "Run performance benchmarks"
+  (load "run-tests.lisp")
+  (funcall (find-symbol "BENCHMARK-SCHEDULER" :cl-user)))
+
+(defun parse-integer-safe (str)
+  "Safely parse integer from string"
+  (handler-case (parse-integer str)
+    (error () nil)))
+
+(defun main (&rest args)
+  "Main entry point for the script"
+  (let ((command (first args))
+        (options (rest args)))
+    
+    (cond
+      ((or (null command) (string= command "help") (string= command "--help"))
+       (show-usage))
+      
+      ((string= command "test")
+       (run-tests))
+      
+      ((string= command "demo")
+       (run-demo))
+      
+      ((string= command "repl")
+       (start-repl))
+      
+      ((string= command "validate")
+       (validate-installation))
+      
+      ((string= command "schedule")
+       (let ((contacts 100)
+             (db-path "demo-scheduler.db"))
+         ;; Parse options
+         (loop for (option value) on options by #'cddr
+               do (cond
+                    ((string= option "--contacts")
+                     (let ((num (parse-integer-safe value)))
+                       (when num (setf contacts num))))
+                    ((string= option "--db-path")
+                     (setf db-path value))))
+         (run-scheduler :contacts contacts :db-path db-path)))
+      
+      ((string= command "benchmark")
+       (run-benchmark))
+      
+      (t
+       (format t "Unknown command: ~A~%" command)
+       (show-usage)
+       (uiop:quit 1)))))
+
+;;; vim: set ft=lisp lisp:

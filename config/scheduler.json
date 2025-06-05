@@ -1,0 +1,26 @@
+{
+  "timezone": "America/Chicago",
+  "batch_size": 10000,
+  "birthday_days_before": 14,
+  "effective_date_days_before": 30,
+  "pre_window_buffer": 60,
+  "daily_cap_percentage": 0.07,
+  "ed_soft_limit": 15,
+  "send_time": "08:30:00",
+  "aep_month": 9,
+  "aep_day": 15,
+  "max_emails_per_period": 5,
+  "period_days": 30,
+  "db_path": "scheduler.db",
+  "load_balancing": {
+    "daily_send_percentage_cap": 0.07,
+    "ed_daily_soft_limit": 15,
+    "ed_smoothing_window_days": 5,
+    "catch_up_spread_days": 7,
+    "overage_threshold": 1.2
+  },
+  "logging": {
+    "level": "info",
+    "file": "scheduler.log"
+  }
+}

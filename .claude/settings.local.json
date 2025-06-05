@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(make:*)",
+      "Bash(ros run --eval \"(ql:quickload :email-scheduler)\" --eval \"(quit)\")",
+      "Bash(./roswell/email-scheduler.ros:*)",
+      "Bash(ros run --eval \"(ql:quickload :email-scheduler)\" --quit)",
+      "Bash(ros run:*)",
+      "Bash(sbcl:*)",
+      "Bash(rm:*)",
+      "Bash(sed:*)"
+    ],
+    "deny": []
+  }
+}
