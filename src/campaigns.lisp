@@ -329,25 +329,13 @@
 ;;; Integration with Main Scheduling
 (defun get-campaign-schedules-for-contact (contact &optional (config *scheduler-config*))
   "Calculate all campaign-based email schedules for a contact"
-  (declare (ignore config))
-  (let ((schedules '())
-        (contact-id (email-scheduler.domain:contact-id contact)))
-    
-    ;; Get active campaign instances
-    (dolist (campaign-instance (get-active-campaign-instances))
-      ;; Check if contact is targeted for this campaign
-      ;; For now, we'll simulate this - in full implementation this would query the database
-      (let ((contact-campaign (make-instance 'contact-campaign
-                                             :contact-id contact-id
-                                             :campaign-instance-id (campaign-instance-id campaign-instance)
-                                             :trigger-date (local-time:now)
-                                             :status :pending)))
-        (let ((schedule (create-campaign-email-schedule 
-                         contact-id campaign-instance contact-campaign 
-                         (contact-campaign-trigger-date contact-campaign))))
-          (push schedule schedules))))
-    
-    schedules))
+  (let ((db-path (getf config :db-path "scheduler.db")))
+    (if (probe-file db-path)
+        (email-scheduler.database:with-database (db db-path)
+          (calculate-campaign-schedules contact db))
+        (progn
+          (format t "Warning: Database not found at ~A, skipping campaign schedules~%" db-path)
+          '()))))
 
 ;;; Email Type Integration
 (defmethod email-scheduler.domain:format-email-type ((email-type campaign-email))
@@ -367,3 +355,84 @@
 
 ;;; Initialize built-in campaign types when this file is loaded
 (create-builtin-campaign-types)
+
+;;; Database Integration Functions
+(defun setup-campaign-system (db)
+  "Set up the campaign system with database integration"
+  (handler-case
+      (progn
+        ;; Populate built-in campaign types in database
+        (email-scheduler.database:populate-builtin-campaign-types db)
+        
+        ;; Load active campaign instances from database
+        (setf *active-campaign-instances* 
+              (email-scheduler.database:get-active-campaign-instances-from-db db))
+        
+        (format t "Campaign system initialized with ~A active instances~%" 
+                (length *active-campaign-instances*)))
+    (error (e)
+      (format t "Warning: Campaign system setup failed: ~A~%" e))))
+
+(defun calculate-campaign-schedules (contact db)
+  "Calculate campaign schedules for a contact using database"
+  (let ((schedules '())
+        (contact-id (email-scheduler.domain:contact-id contact)))
+    
+    ;; Get campaign instances this contact is enrolled in
+    (handler-case
+        (let ((contact-campaigns (email-scheduler.database:get-contact-campaigns db contact-id)))
+          (dolist (cc-row contact-campaigns)
+            (let* ((campaign-instance-id (first cc-row))
+                   (trigger-date-str (second cc-row))
+                   (trigger-date (when trigger-date-str 
+                                   (local-time:parse-timestring trigger-date-str)))
+                   (campaign-instance (find campaign-instance-id *active-campaign-instances*
+                                            :key #'campaign-instance-id)))
+              (when (and campaign-instance trigger-date)
+                (let ((schedule (create-campaign-email-schedule 
+                                contact-id campaign-instance nil trigger-date)))
+                  (push schedule schedules))))))
+      (error (e)
+        (format t "Warning: Failed to get campaign schedules for contact ~A: ~A~%" 
+                contact-id e)))
+    
+    schedules))
+
+;;; Campaign Management Functions
+(defun create-test-campaign-data (db)
+  "Create test campaign data for development"
+  (handler-case
+      (progn
+        ;; Create a test rate increase campaign instance
+        (let ((rate-increase-instance 
+               (list :campaign-type "rate_increase"
+                     :instance-name "test_rate_increase_2024"
+                     :email-template "rate_increase_email_v1"
+                     :sms-template "rate_increase_sms_v1" 
+                     :active-start-date "2024-01-01"
+                     :active-end-date "2024-12-31"
+                     :metadata "{\"test\": true}")))
+          (email-scheduler.database:insert-campaign-instance db rate-increase-instance))
+        
+        ;; Create a test seasonal promo campaign instance
+        (let ((promo-instance 
+               (list :campaign-type "seasonal_promo"
+                     :instance-name "test_spring_promo_2024"
+                     :email-template "spring_promo_email_v1"
+                     :sms-template "spring_promo_sms_v1"
+                     :active-start-date "2024-03-01"
+                     :active-end-date "2024-05-31"
+                     :metadata "{\"season\": \"spring\"}")))
+          (email-scheduler.database:insert-campaign-instance db promo-instance))
+        
+        ;; Enroll some test contacts in campaigns
+        (let ((test-contact-ids '(1 2 3 4 5)))
+          (dolist (contact-id test-contact-ids)
+            (email-scheduler.database:insert-contact-campaign 
+             db contact-id 1 (local-time:timestamp+ (local-time:now) 30 :day))
+            (email-scheduler.database:insert-contact-campaign 
+             db contact-id 2 (local-time:timestamp+ (local-time:now) 45 :day))))
+        
+        (format t "Test campaign data created successfully~%"))
+    (error (e)
+      (format t "Warning: Failed to create test campaign data: ~A~%" e))))

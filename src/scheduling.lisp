@@ -62,6 +62,29 @@
                    :status :pre-scheduled
                    :priority 7)))
 
+(defun calculate-campaign-schedules (contact config)
+  "Calculate campaign-based email schedules for a contact"
+  (declare (ignore config))
+  ;; Get campaign schedules from the campaign system
+  (handler-case
+      (email-scheduler.campaigns:get-campaign-schedules-for-contact contact)
+    (error (e)
+      (format t "Warning: Campaign scheduling failed for contact ~A: ~A~%" 
+              (email-scheduler.domain:contact-id contact) e)
+      '())))
+
+(defun apply-state-rules-to-schedules (contact schedules)
+  "Apply state exclusion rules to all schedules for a contact"
+  (mapcar (lambda (schedule)
+            (let ((send-date (email-scheduler.domain:scheduled-date schedule)))
+              (if (email-scheduler.rules:in-exclusion-window-p contact send-date)
+                  (progn
+                    (setf (email-scheduler.domain:schedule-status schedule) :skipped)
+                    (setf (email-scheduler.domain:skip-reason schedule) "exclusion-window")
+                    schedule)
+                  schedule)))
+          schedules))
+
 (defun calculate-all-schedules (contact &optional (config *scheduler-config*))
   "Calculate all email schedules for a contact"
   (let ((today (email-scheduler.date-utils:today))
@@ -82,6 +105,9 @@
     ;; Calculate campaign-based emails
     (let ((campaign-schedules (calculate-campaign-schedules contact config)))
       (setf schedules (append schedules campaign-schedules)))
+    
+    ;; Apply state exclusion rules to all schedules
+    (setf schedules (apply-state-rules-to-schedules contact schedules))
     
     schedules))
 
@@ -120,13 +146,6 @@
   ;; For now, just return all schedules
   schedules)
 
-(defun calculate-campaign-schedules (contact config)
-  "Calculate campaign-based email schedules for a contact"
-  ;; This will call the campaign system when it's available
-  ;; For now, return empty list
-  (declare (ignore contact config))
-  '())
-
 ;;; Main scheduling functions
 (defun run-scheduler (&key (db-path "scheduler.db") (backup-db t))
   "Run the email scheduler"
@@ -149,10 +168,12 @@
 
 (defun schedule-emails-streaming (db-path run-id &optional (config *scheduler-config*))
   "Stream email scheduling for large datasets"
-  (declare (ignore config))
   (email-scheduler.database:with-database (db db-path)
+    ;; Setup campaign system
+    (email-scheduler.campaigns:setup-campaign-system db)
+    
     (let ((total-contacts (email-scheduler.database:count-contacts db))
-          (batch-size 1000)
+          (batch-size (getf config :batch-size 1000))
           (processed 0))
       (loop for offset from 0 by batch-size
             while (< offset total-contacts)
