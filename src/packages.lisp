@@ -274,3 +274,35 @@
    #:trace-scheduling
    #:explain-exclusion
    #:preview-schedules))
+
+;; Add this import for sqlite support
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (handler-case
+      (progn
+        (require :sb-posix)
+        (require :sb-bsd-sockets))
+    (error ())))
+
+(defpackage #:sqlite
+  (:use #:cl)
+  (:export #:connect #:disconnect #:execute-single #:execute-to-list #:execute-non-query))
+
+(defpackage #:email-scheduler
+  (:use #:cl)
+  (:import-from #:email-scheduler.domain
+                #:contact #:email-schedule #:schedule-status)
+  (:import-from #:email-scheduler.database
+                #:with-database #:create-database-schema)
+  (:import-from #:email-scheduler.campaigns
+                #:setup-campaign-system)
+  (:import-from #:email-scheduler.frequency-limiter
+                #:integrate-frequency-limits)
+  (:import-from #:email-scheduler.load-balancer
+                #:apply-load-balancing)
+  (:export #:run-scheduler
+           #:schedule-emails-streaming
+           #:setup-test-environment
+           #:run-test-scheduler
+           #:calculate-all-schedules
+           #:*scheduler-config*
+           #:main))
